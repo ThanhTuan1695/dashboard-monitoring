@@ -85,12 +85,13 @@ function createGenericSnmpConnector({ host, timeoutMs = 3000, ...credentials } =
     async getInterfaces() {
       // ifTable (name/admin/oper status) and ifXTable (64-bit octet counters + high-speed,
       // needed for accurate throughput on >4Gbps links) are two separate SNMP tables sharing
-      // the same ifIndex — walked separately, then merged by index.
-      const [ifTable, ifXTable] = await Promise.all([
-        tableColumns(host, credentials, '1.3.6.1.2.1.2.2', [2, 7, 8], timeoutMs),
-        tableColumns(host, credentials, '1.3.6.1.2.1.31.1.1.1', [6, 10, 15], timeoutMs),
-      ]);
+      // the same ifIndex — walked separately, then merged by index. Walked one after the
+      // other, not concurrently: many embedded SNMP agents (firewalls/switches) handle two
+      // simultaneous table walks against the same session poorly and return corrupted or
+      // empty data for one of them, so this trades a bit of extra latency for correctness.
+      const ifTable = await tableColumns(host, credentials, '1.3.6.1.2.1.2.2', [2, 7, 8], timeoutMs);
       if (!ifTable) return [];
+      const ifXTable = await tableColumns(host, credentials, '1.3.6.1.2.1.31.1.1.1', [6, 10, 15], timeoutMs);
       return Object.keys(ifTable).map((index) => {
         const row = ifTable[index];
         const xRow = ifXTable?.[index];

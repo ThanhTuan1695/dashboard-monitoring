@@ -105,12 +105,13 @@ function createGenericSwitchSnmpConnector({ host, timeoutMs = 3000, ...credentia
 
     async getInterfaces() {
       // ifTable and ifXTable share the same ifIndex but are two separate SNMP tables —
-      // walked separately, then merged by index.
-      const [table, xTable] = await Promise.all([
-        tableColumns(host, credentials, IF_TABLE_OID, Object.values(IF_COLUMNS), timeoutMs),
-        tableColumns(host, credentials, IFX_TABLE_OID, Object.values(IFX_COLUMNS), timeoutMs),
-      ]);
+      // walked one after the other, not concurrently: many embedded SNMP agents handle
+      // two simultaneous table walks against the same session poorly and return
+      // corrupted or empty data for one of them, so this trades a bit of extra latency
+      // for correctness.
+      const table = await tableColumns(host, credentials, IF_TABLE_OID, Object.values(IF_COLUMNS), timeoutMs);
       if (!table) return [];
+      const xTable = await tableColumns(host, credentials, IFX_TABLE_OID, Object.values(IFX_COLUMNS), timeoutMs);
       return Object.keys(table).map((index) => {
         const row = table[index];
         const xRow = xTable?.[index];

@@ -1,5 +1,6 @@
 const { snmpProbe } = require('../../monitoring/discovery/snmpProbe');
 const { createSnmpSession } = require('../../monitoring/discovery/snmpSession');
+const { counter64ToNumber } = require('../../monitoring/discovery/snmpCounters');
 
 function ifStatusToString(status) {
   if (status === 1) return 'up';
@@ -82,14 +83,25 @@ function createGenericSnmpConnector({ host, timeoutMs = 3000, ...credentials } =
     },
 
     async getInterfaces() {
-      const table = await tableColumns(host, credentials, '1.3.6.1.2.1.2.2', [2, 7, 8], timeoutMs);
-      if (!table) return [];
-      return Object.keys(table).map((index) => {
-        const row = table[index];
+      // ifTable (name/admin/oper status) and ifXTable (64-bit octet counters + high-speed,
+      // needed for accurate throughput on >4Gbps links) are two separate SNMP tables sharing
+      // the same ifIndex — walked separately, then merged by index.
+      const [ifTable, ifXTable] = await Promise.all([
+        tableColumns(host, credentials, '1.3.6.1.2.1.2.2', [2, 7, 8], timeoutMs),
+        tableColumns(host, credentials, '1.3.6.1.2.1.31.1.1.1', [6, 10, 15], timeoutMs),
+      ]);
+      if (!ifTable) return [];
+      return Object.keys(ifTable).map((index) => {
+        const row = ifTable[index];
+        const xRow = ifXTable?.[index];
+        const highSpeed = xRow ? Number(xRow[15]) : null;
         return {
           name: row[2] != null ? String(row[2]) : `if${index}`,
           adminStatus: ifStatusToString(Number(row[7])),
           operStatus: ifStatusToString(Number(row[8])),
+          speedMbps: highSpeed > 0 ? highSpeed : null,
+          rxOctets: xRow ? counter64ToNumber(xRow[6]) : null,
+          txOctets: xRow ? counter64ToNumber(xRow[10]) : null,
         };
       });
     },

@@ -6,6 +6,7 @@ const { HealthEngine } = require('../health/healthEngine');
 const { HealthStatus } = require('../core/healthStatus');
 const { decrypt } = require('../../monitoring/services/credentialService');
 const thresholds = require('../../monitoring/core/thresholds');
+const { computeInterfaceBandwidth } = require('../../monitoring/core/bandwidthCalculator');
 
 const healthEngine = new HealthEngine();
 
@@ -48,7 +49,7 @@ async function ensureDiscovery(device, { force = false } = {}) {
   if (!force && !stale) return latest.discovery;
 
   const credential = await loadCredential(device);
-  return discover(device.ipAddress, credentialToConnectorShape(credential));
+  return discover(device.ipAddress, { ...credentialToConnectorShape(credential), managementPort: device.monitor?.port });
 }
 
 /**
@@ -68,10 +69,23 @@ async function poll(device, { forceDiscovery = false } = {}) {
   const normalized = await collect({
     deviceId: device._id.toString(),
     host: device.ipAddress,
+    port: device.monitor?.port,
     vendor,
     credentials: credentialToConnectorShape(credential),
     discoveryResult,
   });
+
+  // Bandwidth is a rate — derive it from this poll's byte counters vs the
+  // previous poll's, never fabricated on the very first poll (nothing to diff against).
+  const previous = await DeviceHealthSnapshot.findOne({ device: device._id }, 'normalized.interfaces collectedAt').sort({ collectedAt: -1 });
+  const { interfaces, bandwidth } = computeInterfaceBandwidth(
+    normalized.interfaces,
+    previous?.normalized?.interfaces,
+    previous?.collectedAt,
+    new Date()
+  );
+  normalized.interfaces = interfaces;
+  normalized.bandwidth = bandwidth;
 
   const evaluation = healthEngine.evaluate(normalized);
 

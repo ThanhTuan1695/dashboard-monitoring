@@ -5,7 +5,7 @@ const MonitorSchema = new mongoose.Schema(
   {
     method: {
       type: String,
-      enum: ['ping', 'tcp', 'http', 'snmp', 'onvif', 'connector'],
+      enum: ['ping', 'tcp', 'http', 'snmp', 'onvif', 'ssh', 'connector'],
       default: 'ping',
     },
     port: { type: Number },
@@ -14,9 +14,9 @@ const MonitorSchema = new mongoose.Schema(
     snmpVersion: { type: String, enum: ['1', '2c'], default: '2c' },
     snmpOid: { type: String, default: '1.3.6.1.2.1.1.3.0' },
     onvifPath: { type: String, default: '/onvif/device_service' },
-    // 'connector' method only (the shared ConnectorManager/vendor-connector pipeline — offered
-    // for type: 'firewall'/'switch' devices in the UI): reference to the encrypted
-    // DeviceCredential doc, if any (credentials are optional).
+    // 'ssh' method (any device type) and 'connector' method (the shared ConnectorManager/
+    // vendor-connector pipeline, offered for type: 'firewall'/'switch') both reference the
+    // same encrypted DeviceCredential doc, if any (credentials are optional).
     credentialId: { type: mongoose.Schema.Types.ObjectId, ref: 'DeviceCredential', default: null },
     // '' = auto-detect via discovery fingerprinting (the default); an explicit value here
     // skips relying on confidence-scored fingerprinting and always tries that vendor's connector.

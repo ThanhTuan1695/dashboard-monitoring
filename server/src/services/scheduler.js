@@ -5,10 +5,16 @@ const checks = require('./checks');
 const alerts = require('./alerts');
 const firewallPollingService = require('../firewall/services/firewallPollingService');
 const switchPollingService = require('../switch/services/switchPollingService');
+const sshPollingService = require('./sshPollingService');
 
 // Which device types run the shared connector pipeline (discover -> ConnectorManager
 // -> Health Engine) instead of a plain reachability check, and which service handles it.
 const CONNECTOR_POLLERS = { firewall: firewallPollingService.poll, switch: switchPollingService.poll };
+
+// 'ssh' is available to every device type (unlike 'connector', which only firewall/switch
+// support) — it's a lightweight credential-confirming check, not the full discover +
+// ConnectorManager + Health Engine pipeline, so it gets its own simple dispatch entry.
+const METHOD_POLLERS = { ssh: sshPollingService.poll };
 
 const CONCURRENCY = Number(process.env.CHECK_CONCURRENCY || 20);
 
@@ -88,7 +94,8 @@ class MonitorScheduler {
     // Engine) replaces the simple reachability check for this method, but
     // still returns the same {ok,latencyMs,error} shape everything below expects.
     const connectorPoll = device.monitor?.method === 'connector' ? CONNECTOR_POLLERS[device.type] : null;
-    const runner = connectorPoll ? () => connectorPoll(device) : () => checks.runCheck(device);
+    const methodPoll = connectorPoll ? null : METHOD_POLLERS[device.monitor?.method];
+    const runner = connectorPoll || methodPoll ? () => (connectorPoll || methodPoll)(device) : () => checks.runCheck(device);
     const result = await this.limit(runner);
     const previousStatus = device.status?.current || 'unknown';
     const downAfterFailures = device.monitor?.downAfterFailures ?? 2;

@@ -11,6 +11,7 @@
 async function collect({
   deviceId,
   host,
+  port,
   vendor,
   credentials,
   discoveryResult,
@@ -39,7 +40,7 @@ async function collect({
   //    connector for the detected/chosen vendor and credentials are present.
   const createNative = nativeConnectors[vendor];
   if (createNative && credentials?.apiToken) {
-    const connector = createNative({ host, apiToken: credentials.apiToken });
+    const connector = createNative({ host, port, apiToken: credentials.apiToken });
     const auth = await connector.authenticate();
     normalized.connectivity.api = auth.ok;
     if (auth.ok) {

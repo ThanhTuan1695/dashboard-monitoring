@@ -165,7 +165,7 @@ function buildDevicesRouter(scheduler, io) {
     const parsed = DiscoverBodySchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message || 'Invalid request body' });
 
-    const discoveryResult = await discover(device.ipAddress, parsed.data || {});
+    const discoveryResult = await discover(device.ipAddress, { ...(parsed.data || {}), managementPort: device.monitor?.port });
     res.json(discoveryResult);
   });
 

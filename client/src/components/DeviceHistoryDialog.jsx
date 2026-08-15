@@ -4,6 +4,8 @@ import { Modal, Button, Spinner } from '@adminlte/react';
 import { useBootstrapModal } from '../hooks/useBootstrapModal';
 import { getDeviceHistory } from '../api/devices';
 import { statusColors } from '../theme';
+import { describeCheck } from '../utils/describeCheck';
+import StatusChip from './StatusChip';
 
 const MODAL_ID = 'device-history-modal';
 
@@ -32,6 +34,11 @@ function formatPercent(p) {
   return `${p.toFixed(p >= 99.95 ? 2 : 1)}%`;
 }
 
+function formatWhen(iso) {
+  if (!iso) return 'never';
+  return new Date(iso).toLocaleString();
+}
+
 export default function DeviceHistoryDialog({ open, device, onClose }) {
   const [rangeKey, setRangeKey] = useState('7d');
   const range = RANGES.find((r) => r.key === rangeKey) || RANGES[1];
@@ -55,6 +62,27 @@ export default function DeviceHistoryDialog({ open, device, onClose }) {
       centered
       footer={<Button theme="secondary" outline label="Close" data-bs-dismiss="modal" />}
     >
+      {device && (
+        <div className="card mb-3">
+          <div className="card-body py-2">
+            <div className="d-flex justify-content-between align-items-start">
+              <div>
+                <span className="text-secondary text-uppercase fs-7 fw-bold">Last check</span>
+                <div className="mt-1">
+                  <code className="fs-7">{describeCheck(device)}</code>
+                </div>
+              </div>
+              <StatusChip status={device.status?.current} />
+            </div>
+            <div className="text-secondary fs-7 mt-2">
+              Checked {formatWhen(device.status?.lastCheckedAt)}
+              {device.status?.current === 'up' && device.status?.latencyMs != null && ` — ${Math.round(device.status.latencyMs)}ms`}
+              {device.status?.current === 'down' && device.status?.lastError && ` — ${device.status.lastError}`}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="d-flex gap-5 mb-4">
         {RANGES.map((r) => (
           <div key={r.key}>

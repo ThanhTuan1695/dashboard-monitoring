@@ -1,5 +1,6 @@
 const { snmpProbe } = require('../../monitoring/discovery/snmpProbe');
 const { createSnmpSession } = require('../../monitoring/discovery/snmpSession');
+const { counter64ToNumber } = require('../../monitoring/discovery/snmpCounters');
 const { classifyPort } = require('../core/portClassification');
 
 function ifStatusToString(status) {
@@ -41,6 +42,12 @@ function tableColumns(host, credentials, oid, columns, timeoutMs) {
 
 const IF_TABLE_OID = '1.3.6.1.2.1.2.2'; // IF-MIB ifTable
 const IF_COLUMNS = { descr: 2, speed: 5, adminStatus: 7, operStatus: 8, inDiscards: 13, inErrors: 14, outDiscards: 19, outErrors: 20 };
+
+// IF-MIB ifXTable — 64-bit octet counters (accurate for >~3.4Gbps links, unlike the 32-bit
+// ifInOctets/ifOutOctets in ifTable, which wrap around too fast to be useful) and ifHighSpeed
+// (Mbps directly, correct beyond ifSpeed's 4.3Gbps ceiling).
+const IFX_TABLE_OID = '1.3.6.1.2.1.31.1.1.1';
+const IFX_COLUMNS = { hcInOctets: 6, hcOutOctets: 10, highSpeed: 15 };
 
 // RFC3621 POWER-ETHERNET-MIB — pethMainPseTable. Per-port power draw
 // (pethPsePortPowerConsumption) is a vendor-optional extension in most real
@@ -97,23 +104,30 @@ function createGenericSwitchSnmpConnector({ host, timeoutMs = 3000, ...credentia
     },
 
     async getInterfaces() {
-      const table = await tableColumns(host, credentials, IF_TABLE_OID, Object.values(IF_COLUMNS), timeoutMs);
+      // ifTable and ifXTable share the same ifIndex but are two separate SNMP tables —
+      // walked separately, then merged by index.
+      const [table, xTable] = await Promise.all([
+        tableColumns(host, credentials, IF_TABLE_OID, Object.values(IF_COLUMNS), timeoutMs),
+        tableColumns(host, credentials, IFX_TABLE_OID, Object.values(IFX_COLUMNS), timeoutMs),
+      ]);
       if (!table) return [];
       return Object.keys(table).map((index) => {
         const row = table[index];
+        const xRow = xTable?.[index];
         const name = row[IF_COLUMNS.descr] != null ? String(row[IF_COLUMNS.descr]) : `if${index}`;
+        const highSpeed = xRow ? Number(xRow[IFX_COLUMNS.highSpeed]) : null;
         return {
           name,
           description: null,
           adminStatus: ifStatusToString(Number(row[IF_COLUMNS.adminStatus])),
           operStatus: ifStatusToString(Number(row[IF_COLUMNS.operStatus])),
           type: 'UNKNOWN',
-          speedMbps: row[IF_COLUMNS.speed] != null ? Math.round(Number(row[IF_COLUMNS.speed]) / 1_000_000) : null,
+          speedMbps: highSpeed > 0 ? highSpeed : row[IF_COLUMNS.speed] != null ? Math.round(Number(row[IF_COLUMNS.speed]) / 1_000_000) : null,
           duplex: null,
           vlan: null,
           nativeVlan: null,
-          rxBytes: null,
-          txBytes: null,
+          rxOctets: xRow ? counter64ToNumber(xRow[IFX_COLUMNS.hcInOctets]) : null,
+          txOctets: xRow ? counter64ToNumber(xRow[IFX_COLUMNS.hcOutOctets]) : null,
           rxErrors: row[IF_COLUMNS.inErrors] != null ? Number(row[IF_COLUMNS.inErrors]) : null,
           txErrors: row[IF_COLUMNS.outErrors] != null ? Number(row[IF_COLUMNS.outErrors]) : null,
           rxDiscards: row[IF_COLUMNS.inDiscards] != null ? Number(row[IF_COLUMNS.inDiscards]) : null,

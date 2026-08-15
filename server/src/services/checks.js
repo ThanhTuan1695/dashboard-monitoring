@@ -164,6 +164,58 @@ async function onvifCheck(host, { port = 80, path = ONVIF_DEVICE_SERVICE_PATH } 
 }
 
 /**
+ * Confirms SSH login actually succeeds — not just that port 22 is open, but
+ * that the given username/password authenticate. Requires the `ssh2` package
+ * (lazily required so the rest of the app still works if it hasn't been
+ * installed yet). Host key is never verified (`hostVerifier` accepts
+ * anything) — this is a reachability/credential check, not a MITM-hardened
+ * connection, matching the same trust posture as httpCheck's self-signed-cert
+ * allowance for internal management UIs.
+ */
+function sshCheck(host, { username, password, port = 22 } = {}, timeoutMs) {
+  return new Promise((resolve) => {
+    if (!username || !password) {
+      resolve({ ok: false, latencyMs: null, error: 'SSH check requires a username and password' });
+      return;
+    }
+
+    let Client;
+    try {
+      ({ Client } = require('ssh2'));
+    } catch {
+      resolve({ ok: false, latencyMs: null, error: 'ssh2 package not installed — run `npm install` in server/' });
+      return;
+    }
+
+    const start = Date.now();
+    const conn = new Client();
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      conn.end();
+      resolve(result);
+    };
+
+    conn.on('ready', () => finish({ ok: true, latencyMs: Date.now() - start, error: null }));
+    conn.on('error', (err) => finish({ ok: false, latencyMs: null, error: err.message || 'SSH connection failed' }));
+
+    try {
+      conn.connect({
+        host,
+        port,
+        username,
+        password,
+        readyTimeout: timeoutMs,
+        hostVerifier: () => true,
+      });
+    } catch (err) {
+      finish({ ok: false, latencyMs: null, error: err.message || 'Failed to start SSH connection' });
+    }
+  });
+}
+
+/**
  * Runs the configured check for a device's monitor config.
  * `device` must have ipAddress/hostname and a monitor sub-object.
  */
@@ -187,4 +239,4 @@ async function runCheck(device) {
   }
 }
 
-module.exports = { pingCheck, tcpCheck, httpCheck, snmpCheck, onvifCheck, runCheck, SYSTEM_UPTIME_OID, ONVIF_DEVICE_SERVICE_PATH };
+module.exports = { pingCheck, tcpCheck, httpCheck, snmpCheck, onvifCheck, sshCheck, runCheck, SYSTEM_UPTIME_OID, ONVIF_DEVICE_SERVICE_PATH };

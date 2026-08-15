@@ -22,6 +22,9 @@ function fmtUptime(seconds) {
 function fmtWatts(v) {
   return v === null || v === undefined ? '—' : `${v} W`;
 }
+function fmtMbps(v) {
+  return v === null || v === undefined ? '—' : `${v} Mbps`;
+}
 function criticalityTheme(criticality) {
   if (criticality === 'UPLINK' || criticality === 'CRITICAL') return 'warning';
   if (criticality === 'IGNORED') return 'secondary';
@@ -147,6 +150,24 @@ export default function SwitchHealthDialog({ open, device, onClose }) {
             </tbody>
           </table>
 
+          {(normalized.bandwidth?.totalRxMbps !== null || normalized.bandwidth?.totalTxMbps !== null) && (
+            <>
+              <h6 className="text-secondary">Bandwidth (total, all ports)</h6>
+              <table className="table table-sm">
+                <tbody>
+                  <tr>
+                    <td>Rx</td>
+                    <td>{fmtMbps(normalized.bandwidth?.totalRxMbps)}</td>
+                  </tr>
+                  <tr>
+                    <td>Tx</td>
+                    <td>{fmtMbps(normalized.bandwidth?.totalTxMbps)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </>
+          )}
+
           {normalized.stack?.enabled !== null && (
             <>
               <h6 className="text-secondary">Stack / Virtual Chassis</h6>
@@ -230,6 +251,9 @@ export default function SwitchHealthDialog({ open, device, onClose }) {
                       <th>Status</th>
                       <th>Role</th>
                       <th>Speed</th>
+                      <th>Rx</th>
+                      <th>Tx</th>
+                      <th>Util%</th>
                       <th>Errors</th>
                       <th>Discards</th>
                     </tr>
@@ -243,6 +267,9 @@ export default function SwitchHealthDialog({ open, device, onClose }) {
                           <Badge theme={criticalityTheme(iface.criticality)}>{iface.criticality}</Badge>
                         </td>
                         <td>{iface.speedMbps !== null ? `${iface.speedMbps} Mbps` : '—'}</td>
+                        <td>{fmtMbps(iface.rxMbps)}</td>
+                        <td>{fmtMbps(iface.txMbps)}</td>
+                        <td>{fmtPercent(iface.utilizationPercent)}</td>
                         <td>{(iface.rxErrors ?? 0) + (iface.txErrors ?? 0)}</td>
                         <td>{(iface.rxDiscards ?? 0) + (iface.txDiscards ?? 0)}</td>
                       </tr>

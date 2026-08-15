@@ -5,7 +5,7 @@
  */
 const net = require('net');
 const http = require('http');
-const { pingCheck, tcpCheck, httpCheck, snmpCheck, onvifCheck } = require('./src/services/checks');
+const { pingCheck, tcpCheck, httpCheck, snmpCheck, onvifCheck, sshCheck } = require('./src/services/checks');
 
 function assert(cond, msg) {
   if (!cond) {
@@ -91,6 +91,48 @@ async function main() {
   const onvifDown = await onvifCheck('127.0.0.1', { port: onvifPort + 1 }, 1000); // nothing listening
   console.log('[test] onvif unreachable port ->', onvifDown);
   assert(onvifDown.ok === false, 'onvif check against an unreachable port should fail gracefully, not throw');
+
+  // --- ssh ---
+  // Real local SSH server via ssh2's own Server class (ssh2 ships both a client
+  // and server implementation) — so unlike the firewall/switch connectors, the
+  // success path here is genuinely exercised, not just documented as unverified.
+  const { Server: SshServer } = require('ssh2');
+  const { generateKeyPairSync } = require('crypto');
+  const { privateKey: sshHostKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+  });
+  const sshServer = new SshServer({ hostKeys: [sshHostKey] }, (client) => {
+    client
+      .on('authentication', (ctx) => {
+        if (ctx.method === 'password' && ctx.username === 'testuser' && ctx.password === 'testpass') {
+          ctx.accept();
+        } else {
+          ctx.reject();
+        }
+      })
+      .on('ready', () => client.end());
+  });
+  await new Promise((resolve) => sshServer.listen(0, '127.0.0.1', resolve));
+  const sshPort = sshServer.address().port;
+
+  const sshGoodAuth = await sshCheck('127.0.0.1', { username: 'testuser', password: 'testpass', port: sshPort }, 3000);
+  console.log('[test] ssh with correct credentials ->', sshGoodAuth);
+  assert(sshGoodAuth.ok === true, 'ssh check should succeed when the username/password authenticate');
+
+  const sshBadAuth = await sshCheck('127.0.0.1', { username: 'testuser', password: 'wrongpass', port: sshPort }, 3000);
+  console.log('[test] ssh with wrong password ->', sshBadAuth);
+  assert(sshBadAuth.ok === false, 'ssh check should fail when the password is wrong — not just check the port is open');
+
+  sshServer.close();
+
+  const sshUnreachable = await sshCheck('127.0.0.1', { username: 'testuser', password: 'testpass', port: sshPort + 1 }, 1000);
+  console.log('[test] ssh unreachable port ->', sshUnreachable);
+  assert(sshUnreachable.ok === false, 'ssh check against an unreachable port should fail gracefully, not throw');
+
+  const sshNoCreds = await sshCheck('127.0.0.1', { port: sshPort }, 1000);
+  console.log('[test] ssh with no credentials ->', sshNoCreds);
+  assert(sshNoCreds.ok === false, 'ssh check without a username/password must not silently pass');
 
   if (process.exitCode === 1) {
     console.error('\n[test] SOME CHECKS FAILED');

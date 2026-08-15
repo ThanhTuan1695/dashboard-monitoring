@@ -2,9 +2,9 @@ const axios = require('axios');
 const https = require('https');
 const parser = require('./fortiGateParser');
 
-function makeClient(host, apiToken, timeoutMs) {
+function makeClient(host, port, apiToken, timeoutMs) {
   return axios.create({
-    baseURL: `https://${host}`,
+    baseURL: `https://${host}:${port}`,
     timeout: timeoutMs,
     httpsAgent: new https.Agent({ rejectUnauthorized: false }), // internal management UIs commonly use a self-signed cert
     headers: { Authorization: `Bearer ${apiToken}` },
@@ -28,8 +28,8 @@ async function safeGet(http, path) {
  * than crashing the poll. Vendor-specific facts only — never computes
  * overall health itself (spec §16/§23).
  */
-function createFortiGateConnector({ host, apiToken, timeoutMs = 5000 } = {}) {
-  const http = makeClient(host, apiToken, timeoutMs);
+function createFortiGateConnector({ host, port = 443, apiToken, timeoutMs = 5000 } = {}) {
+  const http = makeClient(host, port, apiToken, timeoutMs);
 
   return {
     name: 'fortigate-api',

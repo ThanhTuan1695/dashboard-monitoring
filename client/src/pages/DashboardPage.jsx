@@ -122,12 +122,14 @@ export default function DashboardPage() {
 
   const handleSubmitForm = (form, extra) => {
     const onDeviceSaved = async (device) => {
-      if (extra?.connectorApiToken) {
-        try {
+      try {
+        if (extra?.connectorApiToken) {
           await setDeviceCredential(device._id, { type: 'api_token', apiToken: extra.connectorApiToken });
-        } catch (err) {
-          setSnackbar('Device saved, but the credential failed to save: ' + (err.response?.data?.error || err.message));
+        } else if (extra?.sshUsername && extra?.sshPassword) {
+          await setDeviceCredential(device._id, { type: 'username_password', username: extra.sshUsername, password: extra.sshPassword });
         }
+      } catch (err) {
+        setSnackbar('Device saved, but the credential failed to save: ' + (err.response?.data?.error || err.message));
       }
     };
     if (editingDevice) {

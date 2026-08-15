@@ -333,6 +333,14 @@ async function main() {
   assert('stack' in switchHealthRes.body.normalized && 'poe' in switchHealthRes.body.normalized, 'switch normalized shape should include stack/poe groups');
   console.log('[smoke] confirmed switch /health returns the switch-specific normalized shape (stack/poe/layer2) via the same shared route as firewall');
 
+  assert(
+    switchHealthRes.body.normalized.bandwidth &&
+      switchHealthRes.body.normalized.bandwidth.totalRxMbps === null &&
+      switchHealthRes.body.normalized.bandwidth.totalTxMbps === null,
+    'bandwidth should be present but null after only one poll — nothing to diff against yet'
+  );
+  console.log('[smoke] confirmed bandwidth stays null (not fabricated) until a second poll exists to diff against');
+
   const switchCredRes = await request(app)
     .put(`/api/devices/${switchDevice._id}/credential`)
     .set('Authorization', authHeader)
@@ -348,6 +356,69 @@ async function main() {
     'connector-method switch should still show as Up via the existing chip (reachable, just UNKNOWN rich health)'
   );
   console.log('[smoke] confirmed the existing Up/Down chip works for connector-method switches too (shared scheduler dispatch)');
+
+  // 14. 'ssh' monitor method: confirms a real SSH login, not just an open port —
+  // available to every device type (unlike 'connector', which is firewall/switch only).
+  const { Server: SshServer } = require('ssh2');
+  const { generateKeyPairSync } = require('crypto');
+  const { privateKey: sshHostKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
+  });
+  const sshServer = new SshServer({ hostKeys: [sshHostKey] }, (client) => {
+    client
+      .on('authentication', (ctx) => {
+        if (ctx.method === 'password' && ctx.username === 'monitor' && ctx.password === 'correct-horse-battery-staple') {
+          ctx.accept();
+        } else {
+          ctx.reject();
+        }
+      })
+      .on('ready', () => client.end());
+  });
+  await new Promise((resolve) => sshServer.listen(0, '127.0.0.1', resolve));
+  const sshPort = sshServer.address().port;
+
+  const sshDevice = (
+    await request(app)
+      .post('/api/devices')
+      .set('Authorization', authHeader)
+      .send({
+        name: 'SSH Test Server',
+        type: 'server',
+        ipAddress: '127.0.0.1',
+        monitor: { method: 'ssh', port: sshPort, downAfterFailures: 1, timeoutMs: 3000 },
+      })
+  ).body;
+  assert(sshDevice.monitor.method === 'ssh', 'ssh device should use the ssh method as requested');
+
+  const sshNoCredCheck = await request(app).post(`/api/devices/${sshDevice._id}/check-now`).set('Authorization', authHeader);
+  assert(
+    sshNoCredCheck.body.device.status.current === 'down',
+    'ssh check with no credential set yet should report down, not crash'
+  );
+  console.log('[smoke] confirmed ssh method with no credential set reports down safely (no crash)');
+
+  const sshCredRes = await request(app)
+    .put(`/api/devices/${sshDevice._id}/credential`)
+    .set('Authorization', authHeader)
+    .send({ type: 'username_password', username: 'monitor', password: 'correct-horse-battery-staple' });
+  assert(sshCredRes.status === 200 && sshCredRes.body.hasCredential === true, `setting ssh credential failed: ${JSON.stringify(sshCredRes.body)}`);
+  assert(!JSON.stringify(sshCredRes.body).includes('correct-horse-battery-staple'), 'the raw ssh password must never be echoed back');
+
+  const sshGoodCheck = await request(app).post(`/api/devices/${sshDevice._id}/check-now`).set('Authorization', authHeader);
+  assert(sshGoodCheck.body.device.status.current === 'up', 'ssh check with the correct credential should authenticate and report up');
+  console.log('[smoke] confirmed ssh check-now authenticates with the stored credential and reports up');
+
+  await request(app)
+    .put(`/api/devices/${sshDevice._id}/credential`)
+    .set('Authorization', authHeader)
+    .send({ type: 'username_password', username: 'monitor', password: 'wrong-password' });
+  const sshBadCheck = await request(app).post(`/api/devices/${sshDevice._id}/check-now`).set('Authorization', authHeader);
+  assert(sshBadCheck.body.device.status.current === 'down', 'ssh check with a wrong password should report down, not up');
+  console.log('[smoke] confirmed ssh check-now fails (reports down) when the password is wrong — a real auth check, not just port-open');
+
+  sshServer.close();
 
   // 6. Also sanity-check a raw TCP check against a real local listener.
   const server = net.createServer((s) => s.end());

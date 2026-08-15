@@ -21,9 +21,11 @@ const EMPTY = {
 
 export default function DeviceFormDialog({ open, onClose, onSubmit, initialValue }) {
   const [form, setForm] = useState(EMPTY);
-  // Kept separate from `form.monitor` — this goes to the dedicated encrypted-credential
+  // Kept separate from `form.monitor` — these go to the dedicated encrypted-credential
   // endpoint, never as a plain field on the device document itself.
   const [connectorApiToken, setConnectorApiToken] = useState('');
+  const [sshUsername, setSshUsername] = useState('');
+  const [sshPassword, setSshPassword] = useState('');
   const isEdit = Boolean(initialValue);
   const hasExistingCredential = isEdit && Boolean(initialValue?.monitor?.credentialId);
 
@@ -48,6 +50,8 @@ export default function DeviceFormDialog({ open, onClose, onSubmit, initialValue
       setForm(EMPTY);
     }
     setConnectorApiToken('');
+    setSshUsername('');
+    setSshPassword('');
   }, [initialValue, open]);
 
   const handleTypeChange = (type) => {
@@ -62,7 +66,7 @@ export default function DeviceFormDialog({ open, onClose, onSubmit, initialValue
     // Reset the port to the method's own default rather than `|| existing` —
     // otherwise switching from e.g. TCP/554 (a camera's RTSP default) to SNMP
     // or ONVIF silently keeps the previous method's port instead of 161/80.
-    const methodDefaultPort = { snmp: 161, onvif: 80 }[method];
+    const methodDefaultPort = { snmp: 161, onvif: 80, ssh: 22, connector: 443 }[method];
     setForm((f) => ({
       ...f,
       monitor: {
@@ -86,12 +90,20 @@ export default function DeviceFormDialog({ open, onClose, onSubmit, initialValue
   const handleSubmit = () => {
     if (!canSubmit) return;
     const isFortinetConnector = form.monitor.method === 'connector' && form.monitor.vendor === 'fortinet';
-    onSubmit(form, isFortinetConnector && connectorApiToken ? { connectorApiToken } : undefined);
+    const isSsh = form.monitor.method === 'ssh';
+    let extra;
+    if (isFortinetConnector && connectorApiToken) {
+      extra = { connectorApiToken };
+    } else if (isSsh && sshUsername && sshPassword) {
+      extra = { sshUsername, sshPassword };
+    }
+    onSubmit(form, extra);
   };
 
-  const needsPort = ['tcp', 'http', 'snmp', 'onvif'].includes(form.monitor.method);
+  const needsPort = ['tcp', 'http', 'snmp', 'onvif', 'ssh', 'connector'].includes(form.monitor.method);
   const isSnmp = form.monitor.method === 'snmp';
   const isOnvif = form.monitor.method === 'onvif';
+  const isSsh = form.monitor.method === 'ssh';
   const isConnector = form.monitor.method === 'connector';
 
   return (
@@ -184,6 +196,7 @@ export default function DeviceFormDialog({ open, onClose, onSubmit, initialValue
             <option value="http">HTTP(S)</option>
             <option value="snmp">SNMP</option>
             <option value="onvif">ONVIF (cameras)</option>
+            <option value="ssh">SSH (confirm login)</option>
             {(form.type === 'firewall' || form.type === 'switch') && <option value="connector">Auto detect vendor</option>}
           </Select>
         </div>
@@ -195,6 +208,7 @@ export default function DeviceFormDialog({ open, onClose, onSubmit, initialValue
               type="number"
               value={form.monitor.port || ''}
               onChange={(e) => handleMonitorChange('port', Number(e.target.value))}
+              hint={isConnector ? 'The admin GUI/API HTTPS port — change this if it was moved off 443 (e.g. FortiGate on 11443).' : undefined}
             />
           </div>
         )}
@@ -282,6 +296,36 @@ export default function DeviceFormDialog({ open, onClose, onSubmit, initialValue
           onChange={(e) => handleMonitorChange('onvifPath', e.target.value)}
           hint="Uses an unauthenticated GetSystemDateAndTime call — reachability only, no camera credentials needed."
         />
+      )}
+
+      {isSsh && (
+        <div className="row">
+          <div className="col-6">
+            <Input
+              name="sshUsername"
+              label="Username"
+              value={sshUsername}
+              onChange={(e) => setSshUsername(e.target.value)}
+            />
+          </div>
+          <div className="col-6">
+            <Input
+              name="sshPassword"
+              label={hasExistingCredential ? 'Password (leave blank to keep current)' : 'Password'}
+              type="password"
+              value={sshPassword}
+              onChange={(e) => setSshPassword(e.target.value)}
+            />
+          </div>
+          <div className="col-12">
+            <p className="text-secondary fs-7 mb-0 mt-1">
+              <i className="bi bi-info-circle me-1"></i>
+              Attempts a real SSH login with these credentials — a failed login (wrong
+              password, account locked, etc.) counts as "down," not just an unreachable port.
+              Stored encrypted; never echoed back.
+            </p>
+          </div>
+        </div>
       )}
 
       {form.monitor.method === 'http' && (

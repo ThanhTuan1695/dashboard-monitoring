@@ -19,6 +19,9 @@ function fmtUptime(seconds) {
   const hours = Math.floor((seconds % 86400) / 3600);
   return `${days}d ${hours}h`;
 }
+function fmtMbps(v) {
+  return v === null || v === undefined ? '—' : `${v} Mbps`;
+}
 
 export default function FirewallHealthDialog({ open, device, onClose }) {
   useBootstrapModal(MODAL_ID, open, onClose);
@@ -147,6 +150,24 @@ export default function FirewallHealthDialog({ open, device, onClose }) {
             </tbody>
           </table>
 
+          {(normalized.bandwidth?.totalRxMbps !== null || normalized.bandwidth?.totalTxMbps !== null) && (
+            <>
+              <h6 className="text-secondary">Bandwidth (total, all interfaces)</h6>
+              <table className="table table-sm">
+                <tbody>
+                  <tr>
+                    <td>Rx</td>
+                    <td>{fmtMbps(normalized.bandwidth?.totalRxMbps)}</td>
+                  </tr>
+                  <tr>
+                    <td>Tx</td>
+                    <td>{fmtMbps(normalized.bandwidth?.totalTxMbps)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </>
+          )}
+
           {normalized.ha?.enabled !== null && (
             <>
               <h6 className="text-secondary">HA</h6>
@@ -176,16 +197,32 @@ export default function FirewallHealthDialog({ open, device, onClose }) {
           {normalized.interfaces?.length > 0 && (
             <>
               <h6 className="text-secondary">Interfaces</h6>
-              <table className="table table-sm">
-                <tbody>
-                  {normalized.interfaces.map((iface) => (
-                    <tr key={iface.name}>
-                      <td>{iface.name}</td>
-                      <td className={iface.operStatus === 'up' ? 'text-success' : 'text-danger'}>{iface.operStatus}</td>
+              <div className="table-responsive">
+                <table className="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>Interface</th>
+                      <th>Status</th>
+                      <th>Speed</th>
+                      <th>Rx</th>
+                      <th>Tx</th>
+                      <th>Util%</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {normalized.interfaces.map((iface) => (
+                      <tr key={iface.name}>
+                        <td>{iface.name}</td>
+                        <td className={iface.operStatus === 'up' ? 'text-success' : 'text-danger'}>{iface.operStatus}</td>
+                        <td>{iface.speedMbps != null ? `${iface.speedMbps} Mbps` : '—'}</td>
+                        <td>{fmtMbps(iface.rxMbps)}</td>
+                        <td>{fmtMbps(iface.txMbps)}</td>
+                        <td>{fmtPercent(iface.utilizationPercent)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </>
           )}
 

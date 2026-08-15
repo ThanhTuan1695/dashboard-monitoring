@@ -21,6 +21,11 @@ function emptyBaseNormalized(deviceId, ip) {
     },
     health: { cpuPercent: null, memoryPercent: null, diskPercent: null, uptimeSeconds: null, temperature: null, activeSessions: null },
     interfaces: [],
+    // Total device throughput — a rate derived from two consecutive polls' cumulative
+    // byte counters (see monitoring/core/bandwidthCalculator.js), so this stays null
+    // until a second poll exists to diff against. Per-interface rxMbps/txMbps/
+    // utilizationPercent are added onto each entry in `interfaces` the same way.
+    bandwidth: { totalRxMbps: null, totalTxMbps: null },
     alarms: [],
     // Only the capability flags discovery can actually determine (reachability-based).
     // Device-type-specific capabilities (firewall's ha/license/vpn/securityServices,

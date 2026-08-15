@@ -34,7 +34,7 @@ export default function DeviceTable({ devices, onEdit, onDelete, onCheckNow, onV
           <Tooltip title="Status history">
             <Button theme="secondary" outline size="sm" icon="bi-clock-history" aria-label="Status history" onClick={() => onViewHistory(d)} />
           </Tooltip>
-          {(d.type === 'firewall' || d.type === 'switch') && (
+          {(d.type === 'firewall' || d.type === 'switch') && d.monitor?.method === 'connector' && (
             <Tooltip title={d.type === 'firewall' ? 'Firewall health' : 'Switch health'}>
               <Button
                 theme="secondary"

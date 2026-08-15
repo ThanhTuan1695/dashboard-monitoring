@@ -420,6 +420,178 @@ async function main() {
 
   sshServer.close();
 
+  // 15. Plain 'snmp' monitor method: genuinely exercises the new discovery
+  // service (snmpDiscoveryService.js)'s success path via a real local
+  // net-snmp Agent/MIB — mirrors the ssh2.Server rigor above rather than
+  // just confirming graceful failure against an unreachable host, since the
+  // discovery-collection logic only ever runs when the check succeeds.
+  const snmp = require('net-snmp');
+  const dgram = require('dgram');
+
+  const snmpPort = await new Promise((resolve, reject) => {
+    const probe = dgram.createSocket('udp4');
+    probe.on('error', reject);
+    probe.bind(0, '127.0.0.1', () => {
+      const { port: reserved } = probe.address();
+      probe.close(() => resolve(reserved));
+    });
+  });
+
+  const snmpAgent = snmp.createAgent({ port: snmpPort, address: '127.0.0.1', disableAuthorization: true }, () => {});
+  snmpAgent.registerProviders([
+    { name: 'sysDescr', type: snmp.MibProviderType.Scalar, oid: '1.3.6.1.2.1.1.1', scalarType: snmp.ObjectType.OctetString, maxAccess: snmp.MaxAccess['read-only'] },
+    { name: 'sysObjectID', type: snmp.MibProviderType.Scalar, oid: '1.3.6.1.2.1.1.2', scalarType: snmp.ObjectType.OID, maxAccess: snmp.MaxAccess['read-only'] },
+    { name: 'sysUpTime', type: snmp.MibProviderType.Scalar, oid: '1.3.6.1.2.1.1.3', scalarType: snmp.ObjectType.TimeTicks, maxAccess: snmp.MaxAccess['read-only'] },
+    { name: 'sysName', type: snmp.MibProviderType.Scalar, oid: '1.3.6.1.2.1.1.5', scalarType: snmp.ObjectType.OctetString, maxAccess: snmp.MaxAccess['read-only'] },
+    {
+      name: 'entPhysicalTable',
+      type: snmp.MibProviderType.Table,
+      oid: '1.3.6.1.2.1.47.1.1.1.1',
+      maxAccess: snmp.MaxAccess['not-accessible'],
+      tableColumns: [
+        { number: 1, name: 'entPhysicalIndex', type: snmp.ObjectType.Integer, maxAccess: snmp.MaxAccess['read-only'] },
+        { number: 5, name: 'entPhysicalClass', type: snmp.ObjectType.Integer, maxAccess: snmp.MaxAccess['read-only'] },
+        { number: 8, name: 'entPhysicalHardwareRev', type: snmp.ObjectType.OctetString, maxAccess: snmp.MaxAccess['read-only'] },
+        { number: 9, name: 'entPhysicalFirmwareRev', type: snmp.ObjectType.OctetString, maxAccess: snmp.MaxAccess['read-only'] },
+        { number: 10, name: 'entPhysicalSoftwareRev', type: snmp.ObjectType.OctetString, maxAccess: snmp.MaxAccess['read-only'] },
+        { number: 11, name: 'entPhysicalSerialNum', type: snmp.ObjectType.OctetString, maxAccess: snmp.MaxAccess['read-only'] },
+        { number: 13, name: 'entPhysicalModelName', type: snmp.ObjectType.OctetString, maxAccess: snmp.MaxAccess['read-only'] },
+      ],
+      tableIndex: [{ columnName: 'entPhysicalIndex' }],
+    },
+    {
+      name: 'ifTable',
+      type: snmp.MibProviderType.Table,
+      oid: '1.3.6.1.2.1.2.2.1',
+      maxAccess: snmp.MaxAccess['not-accessible'],
+      tableColumns: [
+        { number: 1, name: 'ifIndex', type: snmp.ObjectType.Integer, maxAccess: snmp.MaxAccess['read-only'] },
+        { number: 2, name: 'ifDescr', type: snmp.ObjectType.OctetString, maxAccess: snmp.MaxAccess['read-only'] },
+      ],
+      tableIndex: [{ columnName: 'ifIndex' }],
+    },
+    // ifXTable augments ifTable (same ifIndex) in the real MIB — same standalone-with-matching-
+    // indices simplification as entPhySensorTable below.
+    {
+      name: 'ifXTable',
+      type: snmp.MibProviderType.Table,
+      oid: '1.3.6.1.2.1.31.1.1.1',
+      maxAccess: snmp.MaxAccess['not-accessible'],
+      tableColumns: [
+        { number: 91, name: 'rowIndex', type: snmp.ObjectType.Integer, maxAccess: snmp.MaxAccess['read-only'] },
+        { number: 15, name: 'ifHighSpeed', type: snmp.ObjectType.Gauge, maxAccess: snmp.MaxAccess['read-only'] },
+      ],
+      tableIndex: [{ columnName: 'rowIndex' }],
+    },
+    // entPhySensorTable augments entPhysicalTable in the real MIB (RFC 3433), but for this mock
+    // a standalone table with matching row indices is equivalent — readEntityMib() only merges
+    // by index-string equality between the two returned objects, it doesn't care how the real
+    // device's INDEX clause is defined.
+    {
+      name: 'entPhySensorTable',
+      type: snmp.MibProviderType.Table,
+      oid: '1.3.6.1.2.1.99.1.1.1',
+      maxAccess: snmp.MaxAccess['not-accessible'],
+      tableColumns: [
+        { number: 90, name: 'rowIndex', type: snmp.ObjectType.Integer, maxAccess: snmp.MaxAccess['read-only'] },
+        { number: 1, name: 'entPhySensorType', type: snmp.ObjectType.Integer, maxAccess: snmp.MaxAccess['read-only'] },
+        { number: 5, name: 'entPhySensorOperStatus', type: snmp.ObjectType.Integer, maxAccess: snmp.MaxAccess['read-only'] },
+      ],
+      tableIndex: [{ columnName: 'rowIndex' }],
+    },
+    {
+      name: 'pethMainPseTable',
+      type: snmp.MibProviderType.Table,
+      oid: '1.3.6.1.2.1.105.1.3.1.1', // provider oid = pethMainPseEntry (one level deeper than the table oid the client walks)
+      maxAccess: snmp.MaxAccess['not-accessible'],
+      tableColumns: [
+        { number: 1, name: 'pethMainPseGroupIndex', type: snmp.ObjectType.Integer, maxAccess: snmp.MaxAccess['read-only'] },
+        { number: 2, name: 'pethMainPsePower', type: snmp.ObjectType.Integer, maxAccess: snmp.MaxAccess['read-only'] },
+        { number: 4, name: 'pethMainPseConsumptionPower', type: snmp.ObjectType.Integer, maxAccess: snmp.MaxAccess['read-only'] },
+      ],
+      tableIndex: [{ columnName: 'pethMainPseGroupIndex' }],
+    },
+  ]);
+
+  const snmpMib = snmpAgent.getMib();
+  snmpMib.setScalarValue('sysDescr', 'Mock Switch, SNMP Test Agent');
+  snmpMib.setScalarValue('sysObjectID', '1.3.6.1.4.1.9.1.1208');
+  snmpMib.setScalarValue('sysUpTime', 123456);
+  snmpMib.setScalarValue('sysName', 'mock-switch-01');
+  snmpMib.addTableRow('entPhysicalTable', [1, 3, 'rev-A', '12.1.0', '12.1.0', 'SN-MOCK-0001', 'TestSwitch-24T']);
+  snmpMib.addTableRow('entPhysicalTable', [2, 7, '', '', '', '', '']); // fan
+  snmpMib.addTableRow('entPhysicalTable', [3, 6, '', '', '', '', '']); // power supply
+  snmpMib.addTableRow('entPhysicalTable', [4, 8, '', '', '', '', '']); // temperature sensor
+  snmpMib.addTableRow('entPhySensorTable', [2, 1, 1]); // fan: type=other, operStatus=ok
+  snmpMib.addTableRow('entPhySensorTable', [3, 1, 1]); // PSU: type=other, operStatus=ok
+  snmpMib.addTableRow('entPhySensorTable', [4, 8, 1]); // temp: type=celsius, operStatus=ok
+  snmpMib.addTableRow('pethMainPseTable', [1, 740, 123]);
+  snmpMib.addTableRow('ifTable', [1, 'GigabitEthernet0/1']);
+  snmpMib.addTableRow('ifTable', [2, 'GigabitEthernet0/2']);
+  snmpMib.addTableRow('ifXTable', [1, 1000]);
+  snmpMib.addTableRow('ifXTable', [2, 2500]);
+
+  // Exercise the switch generic connector's environment/PoE reads directly against this same
+  // agent — the OID-level bugs found while building this test (entPhySensorTable and
+  // pethMainPseTable were both off by one MIB-tree level, or had a wrong column number) would
+  // have silently returned null/UNKNOWN here rather than the real values.
+  const { createGenericSwitchSnmpConnector } = require('./src/switch/connectors/genericSwitchSnmpConnector');
+  const switchConn = createGenericSwitchSnmpConnector({ host: '127.0.0.1', port: snmpPort, community: 'public', version: '2c', timeoutMs: 3000 });
+  const env = await switchConn.getEnvironment();
+  assert(env && env.fans === 'healthy', `expected fans healthy, got ${JSON.stringify(env)}`);
+  assert(env.powerSupplies === 'healthy', `expected powerSupplies healthy, got ${JSON.stringify(env)}`);
+  assert(env.temperature === 'healthy', `expected temperature healthy, got ${JSON.stringify(env)}`);
+  console.log('[smoke] confirmed entPhySensorTable is walked correctly against a real agent (fan/PSU/temperature all healthy)');
+
+  const poe = await switchConn.getPoeStatus();
+  assert(poe && poe.budgetWatts === 740, `expected PoE budgetWatts 740, got ${JSON.stringify(poe)}`);
+  assert(poe.usedWatts === 123, `expected PoE usedWatts 123, got ${JSON.stringify(poe)}`);
+  console.log('[smoke] confirmed pethMainPseTable (PoE budget/usage) is walked correctly against a real agent');
+
+  const ifaces = await switchConn.getInterfaces();
+  const if1 = ifaces.find((i) => i.name === 'GigabitEthernet0/1');
+  const if2 = ifaces.find((i) => i.name === 'GigabitEthernet0/2');
+  assert(if1 && if1.speedMbps === 1000, `expected if1 speedMbps 1000 (from ifXTable), got ${JSON.stringify(if1)}`);
+  assert(if2 && if2.speedMbps === 2500, `expected if2 speedMbps 2500 (from ifXTable), got ${JSON.stringify(if2)}`);
+  console.log('[smoke] confirmed ifXTable (high-speed interface counters) is walked correctly against a real agent');
+
+  const snmpDevice = (
+    await request(app)
+      .post('/api/devices')
+      .set('Authorization', authHeader)
+      .send({
+        name: 'SNMP Discovery Test Switch',
+        type: 'switch',
+        ipAddress: '127.0.0.1',
+        monitor: { method: 'snmp', port: snmpPort, downAfterFailures: 1, timeoutMs: 3000 },
+      })
+  ).body;
+  assert(snmpDevice.monitor.method === 'snmp', 'snmp device should use the snmp method as requested');
+  assert(snmpDevice.snmpInfo && snmpDevice.snmpInfo.discoveredAt == null, 'a brand-new device should have no discovered info yet');
+
+  const snmpCheck1 = await request(app).post(`/api/devices/${snmpDevice._id}/check-now`).set('Authorization', authHeader);
+  assert(snmpCheck1.body.device.status.current === 'up', 'snmp check-now against the mock agent should report up');
+  const info1 = snmpCheck1.body.device.snmpInfo;
+  assert(info1.model === 'TestSwitch-24T', `expected model 'TestSwitch-24T', got ${JSON.stringify(info1)}`);
+  assert(info1.serial === 'SN-MOCK-0001', `expected serial 'SN-MOCK-0001', got ${JSON.stringify(info1)}`);
+  assert(info1.version === '12.1.0', `expected version '12.1.0', got ${JSON.stringify(info1)}`);
+  assert(info1.interfaceCount === 2, `expected interfaceCount 2, got ${JSON.stringify(info1)}`);
+  assert(info1.sysDescr === 'Mock Switch, SNMP Test Agent', `expected sysDescr echoed back, got ${JSON.stringify(info1)}`);
+  assert(info1.discoveredAt != null, 'discoveredAt should be set after a successful discovery pass');
+  console.log('[smoke] confirmed plain snmp method genuinely discovers chassis/interface info via a real ENTITY-MIB agent, not just reachability');
+
+  // A second check-now right away must NOT re-run the full discovery walk (6h staleness gate) —
+  // confirm the timestamp is untouched rather than re-stamped on every poll.
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const snmpCheck2 = await request(app).post(`/api/devices/${snmpDevice._id}/check-now`).set('Authorization', authHeader);
+  assert(
+    snmpCheck2.body.device.snmpInfo.discoveredAt === info1.discoveredAt,
+    'a second immediate check-now should reuse the cached discovery, not re-run it'
+  );
+  console.log('[smoke] confirmed discovery is only re-run when stale, not on every poll');
+
+  snmpAgent.close();
+
   // 6. Also sanity-check a raw TCP check against a real local listener.
   const server = net.createServer((s) => s.end());
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));

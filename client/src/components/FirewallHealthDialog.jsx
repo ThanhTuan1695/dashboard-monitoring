@@ -22,6 +22,15 @@ function fmtUptime(seconds) {
 function fmtMbps(v) {
   return v === null || v === undefined ? '—' : `${v} Mbps`;
 }
+function fmtEnvState(v) {
+  return v ? v.charAt(0).toUpperCase() + v.slice(1) : '—';
+}
+function envStateClass(v) {
+  if (v === 'critical') return 'text-danger';
+  if (v === 'degraded') return 'text-warning';
+  if (v === 'healthy') return 'text-success';
+  return '';
+}
 
 export default function FirewallHealthDialog({ open, device, onClose }) {
   useBootstrapModal(MODAL_ID, open, onClose);
@@ -149,6 +158,30 @@ export default function FirewallHealthDialog({ open, device, onClose }) {
               </tr>
             </tbody>
           </table>
+
+          {(normalized.environment?.powerSupplies !== null ||
+            normalized.environment?.fans !== null ||
+            normalized.environment?.temperature !== null) && (
+            <>
+              <h6 className="text-secondary">Environment</h6>
+              <table className="table table-sm">
+                <tbody>
+                  <tr>
+                    <td>Power Supplies</td>
+                    <td className={envStateClass(normalized.environment.powerSupplies)}>{fmtEnvState(normalized.environment.powerSupplies)}</td>
+                  </tr>
+                  <tr>
+                    <td>Fans</td>
+                    <td className={envStateClass(normalized.environment.fans)}>{fmtEnvState(normalized.environment.fans)}</td>
+                  </tr>
+                  <tr>
+                    <td>Temperature</td>
+                    <td className={envStateClass(normalized.environment.temperature)}>{fmtEnvState(normalized.environment.temperature)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </>
+          )}
 
           {(normalized.bandwidth?.totalRxMbps !== null || normalized.bandwidth?.totalTxMbps !== null) && (
             <>

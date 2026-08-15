@@ -10,7 +10,7 @@ const NATIVE_CONNECTORS = {};
 
 /** Pulls every metric group off a connector and merges whatever it actually returned, tagging the source. */
 async function mergeFromConnector(normalized, connector, sourceName) {
-  const [info, health, interfaces, stack, poe, layer2, neighbors, alarms] = await Promise.all([
+  const [info, health, interfaces, stack, poe, layer2, neighbors, alarms, environment] = await Promise.all([
     connector.getDeviceInfo(),
     connector.getSystemHealth(),
     connector.getInterfaces(),
@@ -19,6 +19,7 @@ async function mergeFromConnector(normalized, connector, sourceName) {
     connector.getLayer2Status(),
     connector.getNeighbors(),
     connector.getAlarms(),
+    connector.getEnvironment(),
   ]);
 
   if (info) {
@@ -59,6 +60,10 @@ async function mergeFromConnector(normalized, connector, sourceName) {
   if (alarms?.length) {
     normalized.alarms = alarms;
     normalized.capabilities.alarms = true;
+  }
+  if (environment) {
+    Object.assign(normalized.environment, environment);
+    normalized.sources.environment = sourceName;
   }
 }
 

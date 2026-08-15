@@ -6,6 +6,7 @@ const alerts = require('./alerts');
 const firewallPollingService = require('../firewall/services/firewallPollingService');
 const switchPollingService = require('../switch/services/switchPollingService');
 const sshPollingService = require('./sshPollingService');
+const snmpDiscoveryService = require('./snmpDiscoveryService');
 
 // Which device types run the shared connector pipeline (discover -> ConnectorManager
 // -> Health Engine) instead of a plain reachability check, and which service handles it.
@@ -123,6 +124,18 @@ class MonitorScheduler {
     device.status.consecutiveFailures = consecutiveFailures;
     device.status.latencyMs = result.ok ? result.latencyMs : device.status.latencyMs;
     device.status.lastError = result.error;
+
+    // Best-effort: a plain 'snmp'-method device also gets a broader (stale-after-6h)
+    // read-only info collection alongside its simple reachability check — see
+    // snmpDiscoveryService.js. Never lets a discovery failure affect the check result itself.
+    if (device.monitor?.method === 'snmp' && result.ok) {
+      try {
+        const info = await snmpDiscoveryService.ensureDiscovery(device);
+        if (info) device.snmpInfo = info;
+      } catch (err) {
+        console.error('[snmp-discovery] failed for device', device._id.toString(), err.message);
+      }
+    }
 
     const changed = nextStatus !== previousStatus;
     if (changed) {

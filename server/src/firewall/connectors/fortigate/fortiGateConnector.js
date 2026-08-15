@@ -78,6 +78,10 @@ function createFortiGateConnector({ host, port = 443, apiToken, timeoutMs = 5000
     async getLicenseStatus() {
       return parser.parseLicense(await safeGet(http, '/api/v2/monitor/license/status'));
     },
+
+    async getEnvironment() {
+      return null; // no verified FortiOS REST endpoint for fan/PSU/temperature this pass — honest null, not a guess
+    },
   };
 }
 

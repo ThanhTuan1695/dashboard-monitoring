@@ -30,6 +30,24 @@ const MonitorSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// Populated as a best-effort side effect of the plain 'snmp' check method (not the
+// full connector/Health Engine pipeline) — a broader read-only ENTITY-MIB-based
+// collection alongside the existing single-OID reachability check, refreshed on
+// its own stale-after-6h cadence (see services/snmpDiscoveryService.js). Stays
+// null until the device has actually answered SNMP at least once.
+const SnmpInfoSchema = new mongoose.Schema(
+  {
+    sysDescr: { type: String, default: null },
+    sysObjectID: { type: String, default: null },
+    model: { type: String, default: null },
+    serial: { type: String, default: null },
+    version: { type: String, default: null },
+    interfaceCount: { type: Number, default: null },
+    discoveredAt: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
 const StatusSchema = new mongoose.Schema(
   {
     current: {
@@ -67,6 +85,7 @@ const DeviceSchema = new mongoose.Schema(
 
     monitor: { type: MonitorSchema, default: () => ({}) },
     status: { type: StatusSchema, default: () => ({}) },
+    snmpInfo: { type: SnmpInfoSchema, default: () => ({}) },
   },
   { timestamps: true }
 );

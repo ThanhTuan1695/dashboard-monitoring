@@ -37,4 +37,24 @@ function evaluateResources(n) {
   return { status: HealthStatus.HEALTHY, reasons: [] };
 }
 
-module.exports = { evaluateManagement, evaluateResources };
+/**
+ * Fan/PSU/temperature status — sourced from ENTITY-MIB/ENTITY-SENSOR-MIB
+ * (vendor-agnostic, see monitoring/discovery/entityMib.js), so this applies
+ * equally to firewall and switch normalized shapes (both have an
+ * `environment` group). `null` means no sensor data was available at all
+ * (device doesn't implement these tables, or nothing was queried yet) —
+ * UNKNOWN, never guessed.
+ */
+function evaluateEnvironment(n) {
+  const parts = [n.environment.powerSupplies, n.environment.fans, n.environment.temperature];
+  if (parts.every((p) => p === null)) return { status: HealthStatus.UNKNOWN, reasons: [] };
+  if (parts.some((p) => p === 'critical')) {
+    return { status: HealthStatus.CRITICAL, reasons: [{ code: 'ENVIRONMENT_CRITICAL', severity: 'critical', message: 'A power/fan/temperature sensor reports a critical state' }] };
+  }
+  if (parts.some((p) => p === 'degraded')) {
+    return { status: HealthStatus.DEGRADED, reasons: [{ code: 'ENVIRONMENT_DEGRADED', severity: 'degraded', message: 'A power/fan/temperature sensor reports a degraded state' }] };
+  }
+  return { status: HealthStatus.HEALTHY, reasons: [] };
+}
+
+module.exports = { evaluateManagement, evaluateResources, evaluateEnvironment };

@@ -1,0 +1,42 @@
+# Runs the whole stack (MongoDB + API/scheduler + React dev server) for local
+# development and manual testing. Not hardened for production — JWT_SECRET
+# below is a dev-only placeholder; override it (and the rest) via a real .env
+# setup if you ever deploy this way.
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  server:
+    build: ./server
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      MONGODB_URI: mongodb://mongo:27017/monitoring-dashboard
+      CLIENT_ORIGIN: http://localhost:5173
+      CHECK_CONCURRENCY: 20
+      HISTORY_RETENTION_DAYS: 180
+      JWT_SECRET: dev-only-docker-compose-secret-change-me
+      JWT_EXPIRES_IN: 12h
+      DEVICE_CREDENTIAL_KEY: dev-only-docker-compose-firewall-key-change-me
+    depends_on:
+      - mongo
+
+  client:
+    build: ./client
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:4000
+    depends_on:
+      - server
+
+volumes:
+  mongo-data:

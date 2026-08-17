@@ -39,6 +39,11 @@ function formatWhen(iso) {
   return new Date(iso).toLocaleString();
 }
 
+function hasDiscoveredInfo(snmpInfo) {
+  if (!snmpInfo) return false;
+  return Boolean(snmpInfo.sysDescr || snmpInfo.model || snmpInfo.serial || snmpInfo.version || snmpInfo.interfaceCount != null);
+}
+
 export default function DeviceHistoryDialog({ open, device, onClose }) {
   const [rangeKey, setRangeKey] = useState('7d');
   const range = RANGES.find((r) => r.key === rangeKey) || RANGES[1];
@@ -79,6 +84,49 @@ export default function DeviceHistoryDialog({ open, device, onClose }) {
               {device.status?.current === 'up' && device.status?.latencyMs != null && ` — ${Math.round(device.status.latencyMs)}ms`}
               {device.status?.current === 'down' && device.status?.lastError && ` — ${device.status.lastError}`}
             </div>
+          </div>
+        </div>
+      )}
+
+      {hasDiscoveredInfo(device?.snmpInfo) && (
+        <div className="card mb-3">
+          <div className="card-body py-2">
+            <span className="text-secondary text-uppercase fs-7 fw-bold">Discovered info (via SNMP)</span>
+            <table className="table table-sm mb-0 mt-1">
+              <tbody>
+                {device.snmpInfo.model && (
+                  <tr>
+                    <td className="text-secondary">Model</td>
+                    <td>{device.snmpInfo.model}</td>
+                  </tr>
+                )}
+                {device.snmpInfo.serial && (
+                  <tr>
+                    <td className="text-secondary">Serial</td>
+                    <td>{device.snmpInfo.serial}</td>
+                  </tr>
+                )}
+                {device.snmpInfo.version && (
+                  <tr>
+                    <td className="text-secondary">Firmware</td>
+                    <td>{device.snmpInfo.version}</td>
+                  </tr>
+                )}
+                {device.snmpInfo.interfaceCount != null && (
+                  <tr>
+                    <td className="text-secondary">Interfaces</td>
+                    <td>{device.snmpInfo.interfaceCount}</td>
+                  </tr>
+                )}
+                {device.snmpInfo.sysDescr && (
+                  <tr>
+                    <td className="text-secondary">sysDescr</td>
+                    <td className="fs-7">{device.snmpInfo.sysDescr}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+            <p className="text-secondary fs-7 mb-0 mt-1">Discovered {formatWhen(device.snmpInfo.discoveredAt)}</p>
           </div>
         </div>
       )}

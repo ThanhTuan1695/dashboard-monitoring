@@ -1,7 +1,7 @@
 const { HealthStatus } = require('../../monitoring/core/healthStatus');
 const thresholds = require('../../monitoring/core/thresholds');
 const { evaluateOverall } = require('../../monitoring/health/healthEngineCore');
-const { evaluateManagement, evaluateResources } = require('../../monitoring/health/commonEvaluators');
+const { evaluateManagement, evaluateResources, evaluateEnvironment } = require('../../monitoring/health/commonEvaluators');
 
 /**
  * OFFLINE only when *no* channel works — ICMP blocked alone must never mean
@@ -74,18 +74,6 @@ function evaluateStack(n) {
   const memberMissing = n.stack.expectedMembers !== null && n.stack.members !== null && n.stack.members < n.stack.expectedMembers;
   if (n.stack.status === 'DEGRADED' || memberMissing) {
     return { status: HealthStatus.DEGRADED, reasons: [{ code: 'STACK_MEMBER_DOWN', severity: 'degraded', message: 'One or more stack members are unavailable' }] };
-  }
-  return { status: HealthStatus.HEALTHY, reasons: [] };
-}
-
-function evaluateEnvironment(n) {
-  const parts = [n.environment.powerSupplies, n.environment.fans, n.environment.temperature];
-  if (parts.every((p) => p === null)) return { status: HealthStatus.UNKNOWN, reasons: [] };
-  if (parts.some((p) => p === 'critical')) {
-    return { status: HealthStatus.CRITICAL, reasons: [{ code: 'ENVIRONMENT_CRITICAL', severity: 'critical', message: 'A power/fan/temperature sensor reports a critical state' }] };
-  }
-  if (parts.some((p) => p === 'degraded')) {
-    return { status: HealthStatus.DEGRADED, reasons: [{ code: 'ENVIRONMENT_DEGRADED', severity: 'degraded', message: 'A power/fan/temperature sensor reports a degraded state' }] };
   }
   return { status: HealthStatus.HEALTHY, reasons: [] };
 }

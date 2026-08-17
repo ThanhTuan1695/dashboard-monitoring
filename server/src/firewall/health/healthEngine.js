@@ -1,6 +1,6 @@
 const { HealthStatus } = require('../../monitoring/core/healthStatus');
 const { evaluateOverall } = require('../../monitoring/health/healthEngineCore');
-const { evaluateManagement, evaluateResources } = require('../../monitoring/health/commonEvaluators');
+const { evaluateManagement, evaluateResources, evaluateEnvironment } = require('../../monitoring/health/commonEvaluators');
 
 /**
  * OFFLINE only when *no* channel works — ICMP blocked alone must never mean
@@ -76,6 +76,7 @@ const OFFLINE_COMPONENTS = {
   dataPlane: HealthStatus.UNKNOWN,
   wan: HealthStatus.UNKNOWN,
   ha: HealthStatus.UNKNOWN,
+  environment: HealthStatus.UNKNOWN,
   resources: HealthStatus.UNKNOWN,
   securityServices: HealthStatus.UNKNOWN,
   license: HealthStatus.UNKNOWN,
@@ -87,6 +88,7 @@ const EVALUATORS = {
   dataPlane: evaluateDataPlane,
   wan: evaluateWan,
   ha: evaluateHa,
+  environment: evaluateEnvironment,
   resources: evaluateResources,
   securityServices: () => ({ status: HealthStatus.UNKNOWN, reasons: [] }), // getSecurityServices not implemented this pass
   license: evaluateLicense,

@@ -9,7 +9,7 @@ const NATIVE_CONNECTORS = { fortinet: createFortiGateConnector };
 
 /** Pulls every metric group off a connector and merges whatever it actually returned, tagging the source. */
 async function mergeFromConnector(normalized, connector, sourceName) {
-  const [info, health, interfaces, ha, sessions, alarms, license] = await Promise.all([
+  const [info, health, interfaces, ha, sessions, alarms, license, environment] = await Promise.all([
     connector.getDeviceInfo(),
     connector.getSystemHealth(),
     connector.getInterfaces(),
@@ -17,6 +17,7 @@ async function mergeFromConnector(normalized, connector, sourceName) {
     connector.getSessions(),
     connector.getAlarms(),
     connector.getLicenseStatus(),
+    connector.getEnvironment(),
   ]);
 
   if (info) {
@@ -52,6 +53,10 @@ async function mergeFromConnector(normalized, connector, sourceName) {
     Object.assign(normalized.license, license);
     normalized.capabilities.license = true;
     normalized.sources.license = sourceName;
+  }
+  if (environment) {
+    Object.assign(normalized.environment, environment);
+    normalized.sources.environment = sourceName;
   }
 }
 
